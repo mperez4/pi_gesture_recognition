@@ -1,8 +1,10 @@
 '''
     This script is runs an inference using Tensorflow's Object Detection API  on the Raspberry Pi 3. Works.
     See README.md in root dir for instructions. Enjoy!
+    It saves the bounding boxes that have a confidence score > 90%, and saves the coordinates + raw image in pascal voc format for retrainig
+    images could be found in retraining/
 
-    Filename: inference.py
+    Filename: retrain_inference_voc.py
     Author: Miguel Perez
     Date created: 9/01/2018
     Date last modified: 10/02/2018
@@ -13,6 +15,7 @@ import os
 import sys
 import cv2
 import time
+import math
 
 from picamera.array import PiRGBArray
 from picamera import PiCamera
@@ -23,6 +26,7 @@ import numpy as np
 import tensorflow as tf
 from object_detection.utils import label_map_util
 from object_detection.utils import visualization_utils as vis_util
+from pascal_voc_writer import Writer
 
 #set a variable so that we can log events
 i = 0
@@ -55,6 +59,28 @@ label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
 categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
 category_index = label_map_util.create_category_index(categories)
 np.set_printoptions(threshold='nan')
+
+#saves the image and the xml string for image annotation
+def save_data(img, box):
+    #gets the shape of the image
+    height, width, channels = img.shape
+    #TO DO: double check which values represent xmin, ymin, xmax, ymax
+    y1 = math.floor(box[0][0][0] * height)
+    x1 = math.floor(box[0][0][1] * width)
+    y2 = math.floor(box[0][0][2] * height)
+    x2 = math.floor(box[0][0][3] * width)
+    res = x1, y1, x2, y2
+
+    print('INFO[*] Thumb Detected at Coordinates: ' + str(res))
+
+    filename = 'retraining/' + str(time.strftime("%Y%m%d-%H%M%S")) + '.jpg'
+    cv2.imwrite(filename,img)
+
+    writer = Writer(filename, width, height)
+    writer.addObject('thumbs_up', x1, y1, x2, y2)
+    writer.save('retraining/img.xml')
+
+    time.sleep(1)
 
 def is_active(bool):
     if(bool):
@@ -98,6 +124,12 @@ with detection_graph.as_default():
                                                                min_score_thresh=.5,
                                                                line_thickness=3)
 
+
+            num_thumbs_up = len([category_index.get(value) for index,value in enumerate(classes[0]) if scores[0,index] > 0.9])
+
+            if(num_thumbs_up > 0):
+                print('thumb detected')
+                save_data(image_np, boxes)
 
             cv2.imshow('thumbs up detection', image_np)
 
